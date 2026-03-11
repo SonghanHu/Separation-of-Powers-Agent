@@ -6,8 +6,10 @@ This setup uses a custom Docker image with pre-installed tools for job hunting, 
 
 ## Features
 
+- **Multi-agent architecture** with separation of powers (see [ARCHITECTURE.md](ARCHITECTURE.md))
 - **MiniMax M2.5** as default model (swap for OpenAI, Anthropic, etc.)
 - **WhatsApp** integration via built-in plugin
+- **LaTeX compilation** (pdflatex, latexmk) for resume generation
 - **Gmail** access via [gogcli](https://github.com/teddyknox/gogcli) (OAuth 2.0)
 - **Brave Search** for web lookups
 - **GitHub CLI**, **Go**, **Homebrew** baked into the image
@@ -250,6 +252,20 @@ For 24/7 uptime (recommended for WhatsApp connectivity):
 5. Update `gateway.controlUi.allowedOrigins` in `.openclaw-data/openclaw.json` with the VM's IP
 6. `docker compose build && docker compose up -d`
 7. Re-pair WhatsApp (scan QR again)
+
+## Multi-Agent System
+
+This project includes a 5-agent separation-of-powers architecture:
+
+| Agent | Role |
+|-------|------|
+| 🦞 **main** | General assistant (default) |
+| 📋 **secretary** | Orchestrator — spawns sub-agents to coordinate the three branches |
+| 🏛️ **legislature** | Drafts policy and constraints |
+| ⚙️ **executive** | Plans and executes within policy |
+| ⚖️ **judiciary** | Reviews for compliance and risk |
+
+The Secretary automatically orchestrates the workflow using OpenClaw's `sessions_spawn` mechanism. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 
 ## License
 

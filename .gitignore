@@ -14,5 +14,16 @@ client_secret*.json
 my_info/*
 !my_info/*.example.*
 
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# Stray modules
+tstex_modules/
+
 # macOS
 .DS_Store

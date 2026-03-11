@@ -114,6 +114,25 @@ Sub-agents run in isolated sessions. When finished, results are automatically an
 }
 ```
 
+### Automated Setup
+
+After `./setup.sh` completes the basic deployment, run:
+
+```bash
+./setup-agents.sh
+```
+
+This script automatically:
+1. Creates all 4 agents (legislature, executive, judiciary, secretary)
+2. Sets up separate workspace directories
+3. Deploys SOUL.md, IDENTITY.md, USER.md from templates
+4. Copies model configuration from the main agent
+5. Sets agent identities and emojis
+6. Configures sub-agent spawn permissions
+7. Restarts the gateway
+
+Templates live in `templates/agents/` and can be customized before running the script.
+
 ### Workspace Isolation
 
 Each agent has its own workspace directory to prevent SOUL.md and IDENTITY.md conflicts:

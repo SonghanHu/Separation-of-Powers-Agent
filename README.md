@@ -265,7 +265,15 @@ This project includes a 5-agent separation-of-powers architecture:
 | ⚙️ **executive** | Plans and executes within policy |
 | ⚖️ **judiciary** | Reviews for compliance and risk |
 
-The Secretary automatically orchestrates the workflow using OpenClaw's `sessions_spawn` mechanism. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
+The Secretary automatically orchestrates the workflow using OpenClaw's `sessions_spawn` mechanism.
+
+To set up the multi-agent system after the basic setup:
+
+```bash
+./setup-agents.sh
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 
 ## License
 

@@ -1,37 +1,120 @@
-# Separation-of-Powers Agent (OpenClaw)
+# OpenClaw, But With Checks and Balances
 
-> *"The accumulation of all powers, legislative, executive, and judiciary, in the same hands … may justly be pronounced the very definition of tyranny."*
-> — James Madison, Federalist No. 47 (1788)
+This repo turns OpenClaw into a small government.
 
-Multi-agent system on [OpenClaw](https://github.com/openclaw/openclaw): **main** (🦞 龙虾) for general chat and channels, **secretary** (📋) orchestrating Legislature → Executive → Judiciary with flowId-tracked task flows. Includes a **task-progress** dashboard to observe sessions, tool calls, and flows.
+Not the annoying kind. The useful kind.
 
----
+Instead of one giant agent doing everything badly with great confidence, this setup splits work into roles:
 
-## Architecture
+- `main` is your everyday lobster
+- `secretary` is the operator and traffic controller
+- `legislature` writes the rules
+- `executive` makes the plan and does the work
+- `judiciary` reviews what happened and tells everyone to behave
 
-| Agent | Role |
-|-------|------|
-| 🦞 **main** | Default assistant — webchat, Discord, WhatsApp, cron; each session has its own flowId for the dashboard |
-| 📋 **secretary** | Orchestrator — turns your request into a task packet, spawns branches, enforces the 6-phase protocol |
-| 🏛️ **legislature** | Policy — defines rules, constraints, acceptance criteria |
-| ⚙️ **executive** | Plan & execute — proposes plans, runs after Judiciary approval |
-| ⚖️ **judiciary** | Review — APPROVE / MODIFY / DENY; final review of execution |
+The result is a multi-agent system that is easier to inspect, easier to debug, and much harder to let quietly go off the rails.
 
-Secretary uses `sessions_spawn` with labels like `[flow:yyyyMMdd-HHmmss-xxxx] Legislature: Policy Draft - TASK_TITLE`. Same flowId is reused for the whole chain so the dashboard can group phases into one task flow.
+## Why This Exists
 
----
+Single-agent systems are fun right up until they:
 
-## What’s in the box
+- misunderstand the task
+- confidently improvise the wrong thing
+- execute before reviewing
+- lose track of context
+- make it impossible to see who did what
 
-- **OpenClaw Gateway** — Docker, MiniMax M2.5 (or swap model), WhatsApp / Discord / Gmail, Brave Search, gh, gog, Go, LaTeX, etc.
-- **Task Progress Dashboard** — Read-only UI at **http://localhost:3080**: flowchart view of sessions and tool calls, split into **三权分立系统** (Secretary/Legislature/Executive/Judiciary) and **龙虾主系统** (main agent). FlowId-based grouping; main sessions get a synthetic flowId so they appear as proper flows.
-- **Session model** — New conversation = new session; shared long-term context lives in `USER.md` (and planned `MEMORY.md`), not in transcript.
+This project is the opposite of that.
 
----
+It gives you:
 
-## Quick start
+- a practical OpenClaw deployment
+- a separation-of-powers workflow for serious tasks
+- a readable task dashboard for sessions, tool calls, and flows
+- a cleaner session model where each new conversation can be its own session
 
-### 1. Clone and configure
+## The Cast
+
+| Agent | Job |
+|-------|-----|
+| `main` | General assistant for webchat, Discord, WhatsApp, cron, and direct use |
+| `secretary` | Breaks down a request, routes work, enforces workflow discipline |
+| `legislature` | Defines policy, constraints, scope, and acceptance criteria |
+| `executive` | Produces plans and executes approved work |
+| `judiciary` | Reviews plans and outcomes with `APPROVE`, `MODIFY`, or `DENY` |
+
+## How Work Flows
+
+For structured work, the `secretary` uses `sessions_spawn` to run a task through a pipeline:
+
+1. `legislature` drafts the policy
+2. `executive` drafts the plan
+3. `judiciary` reviews the plan
+4. repair loop if needed
+5. `executive` executes
+6. `judiciary` performs final review
+
+Every spawned phase uses the same `flowId`, formatted like:
+
+```text
+[flow:yyyyMMdd-HHmmss-xxxx] Executive: Plan Draft - TASK_TITLE
+```
+
+That shared `flowId` is what lets the dashboard reconstruct one task as one coherent flow instead of a pile of unrelated sessions.
+
+## What You Get
+
+### 1. OpenClaw Gateway
+
+This repo packages a working OpenClaw gateway with a bunch of useful tooling already wired in:
+
+- Docker-based deployment
+- MiniMax M2.5 by default
+- Brave Search
+- Gmail support via `gog`
+- WhatsApp support
+- Discord support
+- GitHub CLI
+- Go, LaTeX, ffmpeg, Homebrew, and other nice extras
+
+### 2. Task Progress Dashboard
+
+There is a read-only dashboard at `http://localhost:3080` that shows what the system is actually doing.
+
+It is useful when you want to answer questions like:
+
+- Which agent touched this task?
+- What tools were called?
+- Did this come from the Secretary flow or from main directly?
+- Why are these sessions grouped together?
+- What happened in Discord versus webchat?
+
+The dashboard separates flows into:
+
+- `Separation of Powers System`
+- `Lobster Main System`
+
+It also:
+
+- groups Secretary-led work by `flowId`
+- shows per-session tool timelines
+- exposes global tool activity
+- gives synthetic `flowId`s to `main` sessions so they still show up as proper flows
+
+### 3. Cleaner Session Behavior
+
+Current working model:
+
+- new conversation = new session
+- session transcripts are history, not long-term memory
+- long-lived user context belongs in `USER.md`
+- task artifacts belong in workspace files and `pipeline/`
+
+This keeps the system easier to reason about than one infinitely-growing mega-chat.
+
+## Quick Start
+
+### 1. Clone and create `.env`
 
 ```bash
 git clone <your-repo>
@@ -39,113 +122,177 @@ cd openclaw
 cp .env.example .env
 ```
 
-Edit `.env`:
+Fill in at least:
 
-| Variable | Description |
-|----------|-------------|
-| `OPENCLAW_GATEWAY_TOKEN` | `openssl rand -hex 32` |
-| `OPENCLAW_CONFIG_DIR` | Absolute path to `.openclaw-data/` |
-| `OPENCLAW_WORKSPACE_DIR` | Same path + `/workspace` |
-| `MINIMAX_API_KEY` | [MiniMax Platform](https://platform.minimaxi.com) |
-| `BRAVE_API_KEY` | *(optional)* [Brave Search API](https://brave.com/search/api/) |
+- `OPENCLAW_GATEWAY_TOKEN`
+- `OPENCLAW_CONFIG_DIR`
+- `OPENCLAW_WORKSPACE_DIR`
+- `MINIMAX_API_KEY`
 
-### 2. Build and start
+Optional but useful:
+
+- `BRAVE_API_KEY`
+- Gmail / Discord related keys
+
+### 2. Run base setup
 
 ```bash
 ./setup.sh
-docker compose up -d
 ```
 
-### 3. Multi-agent setup
+This will:
+
+- create `.env` if missing
+- generate a token
+- create `.openclaw-data/`
+- build the Docker image
+- start the services
+
+After setup, you should have:
+
+- control console on `http://localhost:18789/?token=<YOUR_TOKEN>`
+- task progress on `http://localhost:3080`
+
+### 3. Create the multi-agent system
 
 ```bash
 ./setup-agents.sh
 ```
 
-Creates secretary, legislature, executive, judiciary; deploys SOUL/IDENTITY/USER from `templates/agents/`; configures sub-agent permissions; restarts the gateway.
+This script:
 
-### 4. Open control console and task progress
+- creates `secretary`, `legislature`, `executive`, and `judiciary`
+- deploys `SOUL.md`, `IDENTITY.md`, and `USER.md`
+- configures sub-agent permissions
+- restarts the gateway
 
-- **Control console (chat):**  
-  `http://localhost:18789/?token=<YOUR_TOKEN>`
+## First Things To Open
 
-  First time: pair device:
-  ```bash
-  docker compose exec openclaw-gateway openclaw devices list
-  docker compose exec openclaw-gateway openclaw devices approve <request-id>
-  ```
+### Talk to the Secretary
 
-- **Task progress (read-only dashboard):**  
-  `http://localhost:3080`  
-  No token; mounts `.openclaw-data` read-only. Shows sessions, pipeline phases, and tool calls (e.g. `web_search`) per flow.
+Use this when you want the full structured workflow:
 
-### 5. Talk to Secretary (or main)
-
-- Secretary:  
-  `http://localhost:18789/chat?session=agent%3Asecretary%3Amain`
-- Main:  
-  `http://localhost:18789/chat?session=agent%3Amain%3Amain`
-
-### 6. New session / switch session
-
-- **New main session:** In the control UI, use the **New session** button or type **`/new`** or **`/reset`** in the chat input.
-- **Switch session:** Change the URL `session=` parameter to the desired session key (e.g. `agent%3Amain%3Adiscord%3Achannel%3A123`), or use the session list in the UI if available.
-
----
-
-## Task Progress (任务进度)
-
-- **URL:** http://localhost:3080 (or `TASK_PROGRESS_PORT`)
-- **Start:** `docker compose up -d task-progress`  
-  After code changes: `docker compose up -d --force-recreate task-progress` so the container repacks the app.
-
-**Tabs:**
-
-- **Dashboard** — Flows grouped by system (三权分立 / 龙虾主系统). Each flow shows phases/sessions and tool call timeline. Filters: agent, scope (active/all/history), system, “显示未归档 session”.
-- **流程时间线** — Raw pipeline phases from Secretary `sessions_spawn` labels.
-- **全局工具流** — All tool calls across agents, reverse chronological.
-
-**APIs:** `GET /api/sessions`, `GET /api/pipeline`, `GET /api/tools`, `GET /api/health`. See `task-progress/README.md` and `docs/TASK-PROGRESS-FRONTEND.md`.
-
----
-
-## Project structure
-
-```
-├── docker-compose.yml       # openclaw-gateway + task-progress
-├── Dockerfile               # Custom image (gh, gog, go, brew, latex, ffmpeg)
-├── setup.sh                 # Basic deployment
-├── setup-agents.sh          # Multi-agent setup (agents, SOUL, permissions)
-├── task-progress/           # Task progress backend + frontend (Node, port 3080)
-│   ├── server.js            # /api/sessions, /api/pipeline, /api/tools
-│   └── public/index.html    # Dashboard UI
-├── docs/
-│   └── TASK-PROGRESS-FRONTEND.md
-├── templates/agents/       # SOUL.md, IDENTITY.md, USER.md per agent
-├── my_info/                 # Mounted into agent workspace
-├── ARCHITECTURE.md          # Protocol, workspace layout, session key format
-├── .env.example
-└── .gitignore               # .openclaw-data, .env, .gog-auth, etc.
+```text
+http://localhost:18789/chat?session=agent%3Asecretary%3Amain
 ```
 
----
+### Talk to Main
 
-## Customization
+Use this for regular chat, Discord-like use, or direct experimentation:
 
-- **Default model:**  
-  `docker compose exec openclaw-gateway openclaw config set agents.defaults.model minimax/MiniMax-M2.5` then restart.
-- **Agent personalities:** Edit `templates/agents/*_SOUL.md` and run `./setup-agents.sh`, or edit `.openclaw-data/workspace-{agent}/SOUL.md` directly.
-- **FlowId protocol:** Secretary SOUL defines the `[flow:...]` label format and that the same flowId is used for the whole chain; task-progress parses it for grouping.
+```text
+http://localhost:18789/chat?session=agent%3Amain%3Amain
+```
 
----
+### Watch the Dashboard
 
-## Security
+```text
+http://localhost:3080
+```
 
-- `.env`, `.openclaw-data/`, `.gog-auth/`, and secrets are git-ignored.
-- Dashboard access is token-protected; task-progress is read-only and uses mounted config only.
-- Access control (only owner may change settings) is enforced in `USER.md` across workspaces.
+## New Session / Switch Session
 
----
+If you want a fresh `main` session:
+
+- use the control UI's `New session` button
+- or send `/new`
+- or send `/reset`
+
+If you want to switch sessions:
+
+- use the control UI session list if available
+- or change the `session=` URL parameter directly
+
+Examples:
+
+- `agent%3Amain%3Amain`
+- `agent%3Asecretary%3Amain`
+- `agent%3Amain%3Adiscord%3Achannel%3A123`
+
+## Task Progress Dashboard
+
+The dashboard is intentionally read-only. It reads `.openclaw-data` and reconstructs activity from session metadata and transcripts.
+
+### Tabs
+
+- `Dashboard`: grouped flows, per-session tool activity, filters, system split
+- `Pipeline`: Secretary spawn phases
+- `Global Tool Flow`: raw tool activity across agents
+
+### APIs
+
+- `GET /api/sessions`
+- `GET /api/pipeline`
+- `GET /api/tools`
+- `GET /api/health`
+
+### Restart After Frontend Changes
+
+Because the container copies the app into `/tmp/app` on startup, frontend/backend dashboard changes should be reloaded with:
+
+```bash
+docker compose up -d --force-recreate task-progress
+```
+
+Yes, `--force-recreate` matters here.
+
+## Project Structure
+
+```text
+docker-compose.yml          # gateway + task-progress
+Dockerfile                  # custom OpenClaw image
+setup.sh                    # base setup
+setup-agents.sh             # multi-agent setup
+ARCHITECTURE.md             # architecture notes
+task-progress/              # dashboard backend + frontend
+docs/                       # design notes
+templates/agents/           # prompts and identities
+my_info/                    # your mounted reference files
+.env.example                # environment template
+```
+
+## Customize It
+
+### Change the default model
+
+```bash
+docker compose exec openclaw-gateway openclaw config set agents.defaults.model minimax/MiniMax-M2.5
+docker compose restart openclaw-gateway
+```
+
+### Edit agent behavior
+
+Update:
+
+- `templates/agents/*_SOUL.md`
+- `templates/agents/*_IDENTITY.md`
+- `templates/agents/USER.md`
+
+Then re-run:
+
+```bash
+./setup-agents.sh
+```
+
+You can also edit runtime copies under `.openclaw-data/workspace-*` directly if you want immediate local changes.
+
+## Security Notes
+
+- `.env`, `.openclaw-data/`, `.gog-auth/`, and other secrets are git-ignored
+- the control console is token-protected
+- the task-progress dashboard is read-only
+- owner-only configuration rules are enforced in `USER.md`
+
+## If You Like Metaphors
+
+This repo is basically:
+
+- one lobster
+- one chief of staff
+- three branches of government
+- one surveillance room full of timelines
+
+Surprisingly effective.
 
 ## License
 

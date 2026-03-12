@@ -349,7 +349,7 @@
       return new Date(ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
     function summarizeSessionLabel(session) {
-      return session.label || (session.origin && session.origin.label) || session.sessionKey || session.sessionId || '未命名会话';
+      return session.cleanLabel || session.label || (session.origin && session.origin.label) || session.sessionKey || session.sessionId || '未命名会话';
     }
     function classifySession(session) {
       const key = String(session.sessionKey || '').toLowerCase();
@@ -365,7 +365,11 @@
     function taskTitleFromLabel(label) {
       const raw = String(label || '').trim();
       if (!raw) return '未命名任务流';
-      const afterColon = raw.replace(/^[^:]+:\s*/, '');
+      const withoutFlow = raw.replace(/^\[flow:[^\]]+\]\s*/i, '');
+      if (!withoutFlow) return '未命名任务流';
+      const normalized = withoutFlow.trim();
+      if (!normalized) return '未命名任务流';
+      const afterColon = normalized.replace(/^[^:]+:\s*/, '');
       const parts = afterColon.split(' - ');
       return parts.length > 1 ? parts.slice(1).join(' - ') : afterColon;
     }
@@ -382,6 +386,8 @@
         return {
           ...session,
           label: summarizeSessionLabel(session),
+          flowId: session.flowId || null,
+          taskTitle: session.taskTitle || taskTitleFromLabel(summarizeSessionLabel(session)),
           events,
           toolCount: events.length,
           lastEventAt,
@@ -423,15 +429,56 @@
       const enriched = enrichSessions(sessions, tools);
       const usedSessionIds = new Set();
       const flows = [];
+      const phases = pipeline.phases || [];
+      const phasesWithFlowId = phases.filter((phase) => phase.flowId);
+      const phasesWithoutFlowId = phases.filter((phase) => !phase.flowId);
+
+      const phasesByFlowId = new Map();
+      for (const phase of phasesWithFlowId) {
+        if (!phasesByFlowId.has(phase.flowId)) phasesByFlowId.set(phase.flowId, []);
+        phasesByFlowId.get(phase.flowId).push(phase);
+      }
+
+      for (const [flowId, group] of phasesByFlowId.entries()) {
+        const sortedGroup = [...group].sort((a, b) => (a.at || 0) - (b.at || 0));
+        const steps = sortedGroup.map((phase) => {
+          const session = enriched.find((candidate) => candidate.flowId === flowId && candidate.agentId === phase.agentId && !usedSessionIds.has(candidate.sessionId))
+            || matchPhaseToSession(phase, enriched.filter((candidate) => candidate.flowId === flowId || !candidate.flowId), usedSessionIds);
+          if (session) usedSessionIds.add(session.sessionId);
+          return {
+            type: 'phase',
+            phase,
+            session,
+            title: phase.cleanLabel || phase.label,
+            agentId: phase.agentId,
+            at: session?.activityAt || phase.at,
+            toolCount: session?.toolCount || 0,
+          };
+        });
+        const startedAt = steps[0]?.at || sortedGroup[0]?.at || 0;
+        const updatedAt = steps.reduce((max, step) => Math.max(max, step.at || 0), startedAt);
+        const title = sortedGroup[0]?.taskTitle || steps[0]?.session?.taskTitle || taskTitleFromLabel(sortedGroup[0]?.cleanLabel || sortedGroup[0]?.label || `任务流 ${flows.length + 1}`);
+        flows.push({
+          id: flowId,
+          flowId,
+          title,
+          startedAt,
+          updatedAt,
+          steps,
+          toolCount: steps.reduce((sum, step) => sum + (step.session?.toolCount || 0), 0),
+        });
+      }
+
       const groupedPhases = buildFlowGroups(pipeline.phases || []);
       groupedPhases.forEach((group, index) => {
+        if (group.some((phase) => phase.flowId)) return;
         const steps = group.map((phase) => {
           const session = matchPhaseToSession(phase, enriched, usedSessionIds);
           return {
             type: 'phase',
             phase,
             session,
-            title: phase.label,
+            title: phase.cleanLabel || phase.label,
             agentId: phase.agentId,
             at: session?.activityAt || phase.at,
             toolCount: session?.toolCount || 0,
@@ -439,7 +486,7 @@
         });
         const startedAt = steps[0]?.at || group[0]?.at || 0;
         const updatedAt = steps.reduce((max, step) => Math.max(max, step.at || 0), startedAt);
-        const title = taskTitleFromLabel(steps[0]?.title || `任务流 ${index + 1}`);
+        const title = group[0]?.taskTitle || taskTitleFromLabel(steps[0]?.title || `任务流 ${index + 1}`);
         flows.push({
           id: 'flow-' + index + '-' + startedAt,
           title,
@@ -451,12 +498,42 @@
       });
 
       const orphanSessions = enriched.filter((session) => !usedSessionIds.has(session.sessionId));
-      const managedOrphans = orphanSessions.filter((session) => {
+      const orphanByFlowId = new Map();
+      for (const session of orphanSessions) {
+        if (!session.flowId) continue;
+        if (!orphanByFlowId.has(session.flowId)) orphanByFlowId.set(session.flowId, []);
+        orphanByFlowId.get(session.flowId).push(session);
+      }
+      for (const [flowId, items] of orphanByFlowId.entries()) {
+        if (flows.some((flow) => flow.flowId === flowId)) continue;
+        const sortedItems = [...items].sort((a, b) => (a.activityAt || 0) - (b.activityAt || 0));
+        sortedItems.forEach((session) => usedSessionIds.add(session.sessionId));
+        flows.push({
+          id: flowId,
+          flowId,
+          title: sortedItems[0]?.taskTitle || taskTitleFromLabel(sortedItems[0]?.label),
+          startedAt: sortedItems[0]?.activityAt || 0,
+          updatedAt: sortedItems[sortedItems.length - 1]?.activityAt || 0,
+          source: 'flowid-orphan',
+          steps: sortedItems.map((session) => ({
+            type: 'session',
+            session,
+            title: session.label,
+            agentId: session.agentId,
+            at: session.activityAt,
+            toolCount: session.toolCount,
+          })),
+          toolCount: sortedItems.reduce((sum, session) => sum + session.toolCount, 0),
+        });
+      }
+
+      const orphanSessionsWithoutFlowId = enriched.filter((session) => !usedSessionIds.has(session.sessionId));
+      const managedOrphans = orphanSessionsWithoutFlowId.filter((session) => {
         const kind = classifySession(session);
         return session.toolCount > 0 && kind !== 'channel' && kind !== 'cron';
       }).map((session) => ({
         id: 'session-flow-' + session.sessionId,
-        title: taskTitleFromLabel(session.label),
+        title: session.taskTitle || taskTitleFromLabel(session.label),
         startedAt: session.activityAt,
         updatedAt: session.activityAt,
         source: 'orphan',
@@ -472,8 +549,8 @@
       }));
 
       const hiddenSummary = {
-        channels: orphanSessions.filter((session) => classifySession(session) === 'channel').length,
-        cron: orphanSessions.filter((session) => classifySession(session) === 'cron').length,
+        channels: orphanSessionsWithoutFlowId.filter((session) => classifySession(session) === 'channel').length,
+        cron: orphanSessionsWithoutFlowId.filter((session) => classifySession(session) === 'cron').length,
         orphanTaskLike: managedOrphans.length,
       };
 

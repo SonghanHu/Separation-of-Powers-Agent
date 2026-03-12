@@ -11,6 +11,20 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const DATA_DIR = process.env.OPENCLAW_CONFIG_DIR || path.join(__dirname, '..', '.openclaw-data');
 
+function extractFlowMeta(label) {
+  const raw = String(label || '').trim();
+  if (!raw) return { flowId: null, cleanLabel: raw, taskTitle: null };
+  const match = raw.match(/^\[flow:([^\]]+)\]\s*(.*)$/i);
+  const cleanLabel = match ? match[2].trim() : raw;
+  const taskPart = cleanLabel.replace(/^[^:]+:\s*/, '');
+  const parts = taskPart.split(' - ');
+  return {
+    flowId: match ? match[1].trim() : null,
+    cleanLabel,
+    taskTitle: parts.length > 1 ? parts.slice(1).join(' - ').trim() : taskPart.trim(),
+  };
+}
+
 function readSessionsForAgent(agentId) {
   const sessionsPath = path.join(DATA_DIR, 'agents', agentId, 'sessions', 'sessions.json');
   if (!fs.existsSync(sessionsPath)) return [];
@@ -24,11 +38,15 @@ function readSessionsForAgent(agentId) {
   const entries = [];
   for (const [sessionKey, meta] of Object.entries(data)) {
     if (!meta || typeof meta !== 'object') continue;
+    const flowMeta = extractFlowMeta(meta.label);
     entries.push({
       agentId,
       sessionKey,
       sessionId: meta.sessionId,
       label: meta.label || null,
+      cleanLabel: flowMeta.cleanLabel,
+      flowId: flowMeta.flowId,
+      taskTitle: flowMeta.taskTitle,
       spawnedBy: meta.spawnedBy || null,
       updatedAt: meta.updatedAt,
       chatType: meta.chatType,
@@ -77,7 +95,15 @@ function parseSpawnLabelsFromTranscript(sessionFilePath) {
         const args = block.arguments || block.args || {};
         const agentId = args.agentId || '?';
         const label = args.label || (args.task ? args.task.slice(0, 60) + '…' : 'spawn');
-        phases.push({ label, agentId, at: tsMs });
+        const flowMeta = extractFlowMeta(label);
+        phases.push({
+          label,
+          cleanLabel: flowMeta.cleanLabel,
+          flowId: flowMeta.flowId,
+          taskTitle: flowMeta.taskTitle,
+          agentId,
+          at: tsMs,
+        });
       }
     } catch {
       // skip malformed lines

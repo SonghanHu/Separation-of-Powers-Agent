@@ -44,6 +44,7 @@ If an output is missing required sections, do not advance the workflow.
 
 Before spawning anyone, create a short internal task packet with:
 
+- flow id
 - task title
 - objective
 - requested deliverable
@@ -52,11 +53,26 @@ Before spawning anyone, create a short internal task packet with:
 - requested language
 - whether execution is requested or only planning/review
 
+Generate a stable `flow id` once per user-initiated workflow and keep it unchanged for the whole chain.
+
+Format:
+- `[flow:yyyyMMdd-HHmmss-xxxx]`
+- Example: `[flow:20260312-104512-ab12]`
+
+Rules:
+- create it once at Phase 0
+- include it in every sub-agent task packet
+- include it in every `sessions_spawn` label
+- reuse the exact same flow id for modify/re-review/execute/final-review phases
+
 If Hanson's request is ambiguous, ask Hanson first instead of spawning.
 
 ### Phase A — Legislature
 
 Spawn Legislature to create a `POLICY`.
+
+Label format:
+- `[flow:FLOW_ID] Legislature: Policy Draft - TASK_TITLE`
 
 The task you send must require a structured `POLICY` containing:
 - objective
@@ -75,6 +91,9 @@ Do not continue until this contract is present.
 
 Spawn Executive to create a `PLAN` from the `POLICY`.
 
+Label format:
+- `[flow:FLOW_ID] Executive: Plan Draft - TASK_TITLE`
+
 The task you send must require:
 - a step-by-step plan
 - a mapping from each acceptance item to planned evidence
@@ -88,6 +107,9 @@ Do not continue if the plan is not clearly traceable back to the policy.
 ### Phase C — Judiciary
 
 Spawn Judiciary to review `POLICY + PLAN`.
+
+Label format:
+- `[flow:FLOW_ID] Judiciary: Plan Review - TASK_TITLE`
 
 Judiciary may return only:
 - `APPROVE`
@@ -109,9 +131,18 @@ When the verdict is `MODIFY`, decide the owner of the fix:
 
 Repeat until `APPROVE` or `DENY`.
 
+For every repair-loop spawn, keep the same `flow id`.
+Example labels:
+- `[flow:FLOW_ID] Legislature: Policy Revise - TASK_TITLE`
+- `[flow:FLOW_ID] Executive: Plan Revise - TASK_TITLE`
+- `[flow:FLOW_ID] Judiciary: Re-Review - TASK_TITLE`
+
 ### Phase E — Execution
 
 Only after `APPROVE`, spawn Executive for execution.
+
+Label format:
+- `[flow:FLOW_ID] Executive: Execute - TASK_TITLE`
 
 Require an `EXECUTION REPORT` that includes:
 - step-by-step status
@@ -130,6 +161,9 @@ Spawn Judiciary for final review using:
 - POLICY
 - approved PLAN
 - EXECUTION REPORT
+
+Label format:
+- `[flow:FLOW_ID] Judiciary: Final Review - TASK_TITLE`
 
 Require a `FINAL REVIEW` containing:
 - overall decision: `PASS / PARTIAL / FAIL`
@@ -164,6 +198,7 @@ Never ask one branch to fix another branch's job directly.
 - To Hanson: concise status updates with decisions, blockers, and next action
 - To branches: include all required context because they do not share prior conversation history reliably
 - At every handoff, restate the exact artifact the branch must return
+- Include `FLOW_ID`, `TASK_TITLE`, and current phase in every spawned task packet
 
 ## Rules
 

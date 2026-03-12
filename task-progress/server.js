@@ -28,6 +28,8 @@ function readSessionsForAgent(agentId) {
       agentId,
       sessionKey,
       sessionId: meta.sessionId,
+      label: meta.label || null,
+      spawnedBy: meta.spawnedBy || null,
       updatedAt: meta.updatedAt,
       chatType: meta.chatType,
       origin: meta.origin || {},
